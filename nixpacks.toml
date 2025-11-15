@@ -1,12 +1,10 @@
-# nixpacks.toml
 [project]
-# Optional: name of your project
 name = "pdf-tools-api"
 
 [phases.setup]
-# System packages your project needs to build Pillow and PyPDF2
+# Packages Pillow needs to compile
 packages = [
-  "python311",          # Ensure Python 3.11 is used
+  "python311",
   "python311Packages.pip",
   "python311Packages.setuptools",
   "python311Packages.wheel",
@@ -21,19 +19,17 @@ packages = [
   "libwebp",
   "libwebp-dev",
   "pkg-config",
-  "gcc",                # compiler needed for building wheels
+  "gcc",
   "make"
 ]
 
 [phases.build]
-# Install Python dependencies
 commands = [
   "python -m pip install --upgrade pip setuptools wheel",
   "python -m pip install -r requirements.txt"
 ]
 
 [phases.start]
-# Start your FastAPI server
 commands = [
   "uvicorn main:app --host 0.0.0.0 --port $PORT"
 ]
