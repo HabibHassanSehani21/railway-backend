@@ -2,7 +2,6 @@
 name = "pdf-tools-api"
 
 [phases.setup]
-# System packages Pillow needs to compile
 packages = [
   "python311",
   "python311Packages.pip",
@@ -24,9 +23,10 @@ packages = [
 ]
 
 [phases.build]
-# Upgrade pip & install Python packages
 commands = [
+  # Upgrade pip and wheel to get prebuilt wheels if possible
   "python -m pip install --upgrade pip setuptools wheel",
+  # Install requirements
   "python -m pip install --no-cache-dir -r requirements.txt"
 ]
 
