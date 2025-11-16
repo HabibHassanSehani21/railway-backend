@@ -4,9 +4,6 @@ python-multipart==0.0.6
 pillow==10.3.0
 PyPDF2==3.0.1
 aiofiles==23.2.1
-aiofiles
-fastapi
-pillow
-PyPDF2
-python-multipart
-uvicorn[standard]
+gunicorn==21.2.0
+celery==5.3.4
+redis==5.0.1
