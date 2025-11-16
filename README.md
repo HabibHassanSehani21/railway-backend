@@ -1,97 +1,188 @@
 # PDF Tools API - Backend
 
-FastAPI backend for PDF processing tools (image conversion, merging, compression).
+Production-ready FastAPI backend for PDF processing tools with Celery, Redis, and NGINX support.
 
 ## Features
 
 - **Image to PDF**: Convert JPG, PNG, GIF, BMP images to PDF
 - **Merge PDF**: Combine multiple PDF files into one
 - **Compress PDF**: Reduce PDF file size with customizable options
-- **Automatic cleanup**: Files are automatically deleted after 1 hour
-- **CORS enabled**: Ready for cross-origin requests
+- **Background Processing**: Async task queue with Celery
+- **Automatic Cleanup**: Files automatically deleted after 1 hour
+- **Production Ready**: Gunicorn, NGINX, SSL, Systemd
 
 ## Tech Stack
 
-- Python 3.11
-- FastAPI
-- Uvicorn (ASGI server)
-- Pillow (image processing)
-- PyPDF2 (PDF manipulation)
+### Core
+- **Python 3.11**
+- **FastAPI** - Modern web framework
+- **Uvicorn/Gunicorn** - ASGI/WSGI servers
+- **Pillow** - Image processing
+- **PyPDF2** - PDF manipulation
 
-## Local Development
+### Production
+- **Celery** - Distributed task queue
+- **Redis** - Message broker
+- **NGINX** - Reverse proxy
+- **Systemd** - Service management
+- **Let's Encrypt** - SSL certificates
 
-### Prerequisites
+## Quick Start
 
-- Python 3.11 or higher
-- pip
+### Local Development
 
-### Setup
-
-1. Install dependencies:
 ```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-2. Run the server:
-```bash
+# Run development server
 python main.py
 ```
 
-The API will be available at `http://localhost:8000`
+API available at: `http://localhost:8000`
 
 ### API Documentation
 
-Once running, visit:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
-## Deploy to Railway.app
+## Production Deployment (Hetzner Cloud)
 
-### Quick Deploy
+This backend is optimized for deployment on **Hetzner Cloud** servers in Germany.
 
-1. **Create Railway Account**
-   - Sign up at https://railway.app
+### Quick Deploy (5 minutes)
 
-2. **Deploy from GitHub**
-   - Push this code to a GitHub repository
-   - In Railway dashboard, click "New Project"
-   - Select "Deploy from GitHub repo"
-   - Choose your repository
-   - Railway will auto-detect Python and deploy
+```bash
+# 1. Create Hetzner Cloud server (Ubuntu 22.04, Germany region)
+# 2. Install system dependencies
+apt update && apt install -y python3.11 nginx redis-server certbot
 
-3. **Generate Public URL**
-   - Click on your deployed service
-   - Go to Settings → Networking
-   - Click "Generate Domain"
-   - Copy your URL (e.g., `https://your-api-production.up.railway.app`)
+# 3. Clone and setup
+git clone YOUR_REPO_URL pdf-tools-backend
+cd pdf-tools-backend
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-### Configuration Files
+# 4. Configure environment
+cp .env.example .env
+nano .env  # Update ALLOWED_ORIGINS
 
-This repository includes Railway configuration:
+# 5. Install services
+sudo cp config/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pdf-api pdf-celery redis
 
-- **`.python-version`**: Specifies Python 3.11
-- **`railway.json`**: Deployment configuration
-- **`requirements.txt`**: Python dependencies
+# 6. Setup NGINX + SSL
+sudo cp config/nginx.conf /etc/nginx/sites-available/pdf-api
+sudo ln -s /etc/nginx/sites-available/pdf-api /etc/nginx/sites-enabled/
+sudo certbot --nginx -d api.yourdomain.com
+```
+
+### 📚 Complete Documentation
+
+| Guide | Description |
+|-------|-------------|
+| **[QUICK_START.md](QUICK_START.md)** | 5-minute deployment reference |
+| **[DEPLOYMENT_HETZNER.md](DEPLOYMENT_HETZNER.md)** | Complete step-by-step deployment guide |
+| **[PRODUCTION_SETUP.md](PRODUCTION_SETUP.md)** | Detailed configuration documentation |
+| **[README_PRODUCTION_CHANGES.md](README_PRODUCTION_CHANGES.md)** | Summary of production code changes |
+
+## API Endpoints
+
+### Health Check
+```http
+GET /health
+```
+Returns: `{"status": "healthy"}`
+
+### Image to PDF
+```http
+POST /api/image-to-pdf
+Content-Type: multipart/form-data
+```
+**Request**: Image files (JPG, PNG, GIF, BMP)  
+**Response**: PDF file download
+
+### Merge PDFs
+```http
+POST /api/merge-pdf
+Content-Type: multipart/form-data
+```
+**Request**: Multiple PDF files (minimum 2)  
+**Response**: Merged PDF file download
+
+### Compress PDF
+```http
+POST /api/compress-pdf?dpi=144&image_quality=75&color_mode=no-change
+Content-Type: multipart/form-data
+```
+**Request**: Single PDF file  
+**Query Parameters**:
+- `dpi` (optional): 72-300, default: 144
+- `image_quality` (optional): 1-100, default: 75
+- `color_mode` (optional): "no-change", "grayscale", "bw", default: "no-change"
+
+**Response**: Compressed PDF file download
+
+## Architecture
+
+```
+Internet
+   ↓
+NGINX (Port 443)
+   ├─ SSL/TLS Termination
+   ├─ Rate Limiting (10 req/s)
+   └─ Security Headers
+   ↓
+Gunicorn (Port 8000)
+   └─ 4-8 Worker Processes
+   ↓
+FastAPI Application
+   ├─ File Upload Handler
+   └─ API Endpoints
+   ↓
+┌────────────┬──────────────┐
+│   Redis    │  File System │
+│ (Port 6379)│  uploads/temp│
+└─────┬──────┴──────────────┘
+      ↓
+Celery Workers
+   └─ Background PDF Processing
+```
+
+## Configuration
 
 ### Environment Variables
 
-No environment variables required for basic deployment. Add these in Railway dashboard if needed:
+Create `.env` file (see `.env.example`):
 
-- `PORT`: Automatically provided by Railway
-- Custom variables: Add in Railway dashboard → Variables tab
+```env
+# Server Configuration
+PORT=8000
+WORKERS=4
 
-### Update CORS (Important!)
+# CORS (Update with your frontend domain!)
+ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 
-After deploying, update the `allow_origins` list in `main.py` to include your frontend domain:
+# Redis
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+
+# File Storage
+FILE_RETENTION_HOURS=1
+```
+
+### CORS Setup
+
+Update `main.py` with your frontend domain:
 
 ```python
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5000",           # Local development
-        "http://localhost:3000",           # Next.js dev
-        "https://your-app.vercel.app",     # Your frontend domain
-        "https://*.vercel.app",            # Vercel preview deployments
+        "https://yourdomain.com",
+        "https://www.yourdomain.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -99,126 +190,176 @@ app.add_middleware(
 )
 ```
 
-Push the changes and Railway will automatically redeploy.
+## Project Structure
 
-## API Endpoints
-
-### Health Check
 ```
-GET /health
+pdf-tools-backend/
+├── main.py                      # FastAPI application
+├── celery_app.py               # Celery configuration
+├── tasks.py                    # Background tasks
+├── requirements.txt            # Python dependencies
+├── .env.example                # Environment template
+│
+├── config/                     # Production configurations
+│   ├── gunicorn.conf.py       # Gunicorn settings
+│   ├── nginx.conf             # NGINX reverse proxy
+│   ├── pdf-api.service        # Main API systemd service
+│   ├── pdf-celery.service     # Celery worker service
+│   └── pdf-celery-beat.service # Celery scheduler service
+│
+├── tools/                      # PDF processing modules
+│   ├── image_to_pdf.py
+│   ├── merge_pdf.py
+│   └── compress_pdf.py
+│
+├── uploads/                    # Temporary upload storage
+└── temp/                       # Temporary output storage
 ```
-Returns server health status.
 
-### Image to PDF
-```
-POST /api/image-to-pdf
-```
-Convert multiple images to a single PDF file.
-
-**Request**: multipart/form-data with image files  
-**Supported formats**: JPG, PNG, GIF, BMP  
-**Response**: PDF file download
-
-### Merge PDFs
-```
-POST /api/merge-pdf
-```
-Merge multiple PDF files into one.
-
-**Request**: multipart/form-data with PDF files (minimum 2)  
-**Response**: Merged PDF file download
-
-### Compress PDF
-```
-POST /api/compress-pdf
-```
-Compress a PDF file with customizable options.
-
-**Request**: multipart/form-data with PDF file  
-**Query Parameters**:
-- `dpi` (optional): Image DPI (default: 144)
-- `image_quality` (optional): JPEG quality 1-100 (default: 75)
-- `color_mode` (optional): "no-change", "grayscale", or "bw" (default: "no-change")
-
-**Response**: Compressed PDF file download
-
-## File Storage
-
-- **Uploads**: Temporary storage in `uploads/` directory
-- **Output**: Generated files in `temp/` directory
-- **Cleanup**: Both directories are cleaned every 5 minutes (files older than 1 hour are deleted)
-
-## Alternative Deployment Options
-
-### Render.com
-
-1. Create account at https://render.com
-2. Create new Web Service
-3. Connect GitHub repository
-4. Configure:
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Deploy
-
-### Fly.io
+## Service Management
 
 ```bash
-# Install Fly CLI
-curl -L https://fly.io/install.sh | sh
+# Start/Stop/Restart services
+sudo systemctl start pdf-api
+sudo systemctl stop pdf-api
+sudo systemctl restart pdf-api
 
-# Deploy
-fly launch
-fly deploy
+# View logs
+sudo journalctl -u pdf-api -f
+sudo journalctl -u pdf-celery -f
+
+# Check status
+sudo systemctl status pdf-api pdf-celery redis nginx
 ```
-
-### Google Cloud Run
-
-1. Create `Dockerfile`:
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$PORT"]
-```
-
-2. Deploy via Google Cloud Console or CLI
 
 ## Monitoring
 
-### Railway Logs
-
+### Health Check
 ```bash
-# Install Railway CLI
-npm i -g @railway/cli
-
-# Login
-railway login
-
-# View logs
-railway logs
+curl https://api.yourdomain.com/health
 ```
 
-### Health Monitoring
+### View Logs
+```bash
+# Application logs
+sudo journalctl -u pdf-api -f
 
-Set up health check monitoring using the `/health` endpoint.
+# NGINX logs
+sudo tail -f /var/log/nginx/pdf-api-access.log
+sudo tail -f /var/log/nginx/pdf-api-error.log
 
-## Security Notes
+# Celery logs
+sudo tail -f /var/log/pdf-api/celery.log
+```
 
-- CORS should be restricted to your frontend domain in production
-- Files are automatically cleaned up after 1 hour
-- No permanent file storage
-- Input validation on all endpoints
-- File type verification before processing
+### Resource Monitoring
+```bash
+# System resources
+htop
+df -h
+free -h
 
-## License
+# Celery workers
+celery -A celery_app status
+celery -A celery_app inspect active
 
-This is an open-source project for PDF processing tools.
+# Redis
+redis-cli INFO
+redis-cli MONITOR
+```
+
+## Performance & Limits
+
+| Metric | Value |
+|--------|-------|
+| Max upload size | 50MB |
+| Rate limit | 10 requests/sec per IP |
+| Worker processes | 4-8 (auto-scaling) |
+| Task timeout | 120 seconds |
+| File retention | 1 hour |
+| SSL/TLS | Enabled |
+| HTTP/2 | Enabled |
+
+## Security Features
+
+- ✅ HTTPS/SSL encryption with Let's Encrypt
+- ✅ Rate limiting per IP address
+- ✅ Security headers (HSTS, X-Frame-Options, CSP)
+- ✅ File size validation (50MB max)
+- ✅ File type verification
+- ✅ Automatic file cleanup
+- ✅ Redis bound to localhost only
+- ✅ Services run as non-root user
+
+## Cost Estimation (Hetzner Cloud)
+
+**Recommended: CX21 (Germany)**
+- 2 vCPU, 4GB RAM, 40GB SSD
+- 20TB traffic included
+- €5.83/month + €1.17/month (backups)
+- **Total: ~€7/month**
+
+Perfect for production PDF processing API.
+
+## Troubleshooting
+
+### 502 Bad Gateway
+```bash
+sudo systemctl status pdf-api
+sudo netstat -tulpn | grep :8000
+sudo journalctl -u pdf-api -n 50
+```
+
+### Service Won't Start
+```bash
+sudo journalctl -u pdf-api -n 50
+ls -la /home/pdfapi/pdf-tools-backend
+```
+
+### Celery Not Processing
+```bash
+redis-cli ping
+celery -A celery_app status
+sudo systemctl restart pdf-celery
+```
+
+## Frontend Integration
+
+Update your Next.js frontend:
+
+```env
+# .env.production
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+```
+
+Example API call:
+```javascript
+const formData = new FormData();
+formData.append('files', imageFile);
+
+const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/image-to-pdf`, {
+  method: 'POST',
+  body: formData
+});
+
+const blob = await response.blob();
+// Download PDF file
+```
 
 ## Support
 
-For issues or questions about Railway deployment:
-- Railway Docs: https://docs.railway.app
-- Railway Discord: https://discord.gg/railway
+- **Deployment**: See [DEPLOYMENT_HETZNER.md](DEPLOYMENT_HETZNER.md)
+- **Configuration**: See [PRODUCTION_SETUP.md](PRODUCTION_SETUP.md)
+- **Quick Start**: See [QUICK_START.md](QUICK_START.md)
+- **Hetzner Docs**: https://docs.hetzner.com/cloud/
+- **FastAPI Docs**: https://fastapi.tiangolo.com/
 
-For issues with the API itself, please create an issue in the repository.
+## License
+
+Open-source project for PDF processing tools.
+
+---
+
+**🚀 Ready for production deployment on Hetzner Cloud!**
+
+See [DEPLOYMENT_HETZNER.md](DEPLOYMENT_HETZNER.md) for complete deployment instructions.
